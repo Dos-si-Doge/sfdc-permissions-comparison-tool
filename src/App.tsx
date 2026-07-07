@@ -4,13 +4,26 @@ import FileList from './components/FileList';
 import SummaryDashboard from './components/SummaryDashboard';
 import DiffTable from './components/DiffTable';
 import ProfileOnlySection from './components/ProfileOnlySection';
+import SfOrgPanel from './components/SfOrgPanel';
+import DeployToolbar from './components/DeployToolbar';
+import DeployResultPanel from './components/DeployResultPanel';
 import { normalizeFileWithDocument } from './lib/normalize';
 import { computeDiff, fieldsEqual } from './lib/diffEngine';
 import { applyFieldEdit, applyFieldDelete, revertRow } from './lib/editing/applyEdit';
 import { serializeDocument, saveViaHandle, downloadAsFile } from './lib/editing/saveFile';
 import { undoEntries, type HistoryEntry, type HistoryStep } from './lib/editing/history';
+import {
+  detectSfCli,
+  fetchOrgs,
+  loginOrg as loginOrgApi,
+  cancelLogin as cancelLoginApi,
+  logoutOrg as logoutOrgApi,
+  validateFiles as validateFilesApi,
+  deployFiles as deployFilesApi,
+} from './lib/sfApi';
 import type { FileEntry } from './lib/fileEntry';
 import { CATEGORIES, CATEGORY_LABELS, type Category, type NormalizedFile } from './lib/types';
+import type { OrgSummary, DeployResponse } from '../server/apiTypes';
 
 let nextId = 0;
 let nextHistoryId = 0;
@@ -43,6 +56,18 @@ export default function App() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const [sfCliAvailable, setSfCliAvailable] = useState<boolean | null>(null);
+  const [orgs, setOrgs] = useState<OrgSummary[]>([]);
+  const [orgsLoading, setOrgsLoading] = useState(false);
+  const [selectedOrgUsername, setSelectedOrgUsername] = useState<string | null>(null);
+  const [loginInFlight, setLoginInFlight] = useState(false);
+  const [loginRequestId, setLoginRequestId] = useState<string | null>(null);
+  const [loginError, setLoginError] = useState<string | undefined>(undefined);
+  const [removingOrgUsername, setRemovingOrgUsername] = useState<string | null>(null);
+  const [selectedForDeploy, setSelectedForDeploy] = useState<Set<string>>(new Set());
+  const [deployAction, setDeployAction] = useState<'validate' | 'deploy' | null>(null);
+  const [deployResult, setDeployResult] = useState<DeployResponse | null>(null);
+  const [deployError, setDeployError] = useState<string | undefined>(undefined);
   const handlesRef = useRef<Map<string, FileSystemFileHandle>>(new Map());
   const docsRef = useRef<Map<string, Document>>(new Map());
   const originalRawRef = useRef<Map<string, string>>(new Map());
@@ -52,6 +77,130 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
+
+  useEffect(() => {
+    detectSfCli().then((result) => {
+      setSfCliAvailable(result.installed);
+      if (result.installed) void refreshOrgs();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function refreshOrgs() {
+    setOrgsLoading(true);
+    try {
+      const { orgs: fetched, defaultUsername } = await fetchOrgs();
+      setOrgs(fetched);
+      setSelectedOrgUsername((prev) => {
+        if (prev && fetched.some((o) => o.username === prev)) return prev;
+        return defaultUsername ?? fetched[0]?.username ?? null;
+      });
+    } finally {
+      setOrgsLoading(false);
+    }
+  }
+
+  async function handleAddOrg() {
+    const requestId = crypto.randomUUID();
+    setLoginRequestId(requestId);
+    setLoginInFlight(true);
+    setLoginError(undefined);
+    try {
+      const result = await loginOrgApi({ requestId });
+      if (result.success) {
+        await refreshOrgs();
+      } else if (!result.cancelled) {
+        setLoginError(result.error ?? 'Login failed.');
+      }
+    } finally {
+      setLoginInFlight(false);
+      setLoginRequestId(null);
+    }
+  }
+
+  async function handleCancelLogin() {
+    if (!loginRequestId) return;
+    await cancelLoginApi({ requestId: loginRequestId });
+  }
+
+  async function handleRemoveOrg(username: string) {
+    if (!window.confirm('Log out of this org?')) return;
+    setRemovingOrgUsername(username);
+    try {
+      const result = await logoutOrgApi({ username });
+      if (result.success) {
+        await refreshOrgs();
+      } else {
+        window.alert(result.error ?? 'Logout failed.');
+      }
+    } finally {
+      setRemovingOrgUsername(null);
+    }
+  }
+
+  function handleToggleSelectForDeploy(id: string) {
+    setSelectedForDeploy((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  /** Sends whatever is currently in memory (serializeDocument), dirty or not — the backend never touches the real file on disk anyway. */
+  function gatherSelectedDeployFiles(): { name: string; sourceType: NormalizedFile['sourceType']; xml: string }[] {
+    const result: { name: string; sourceType: NormalizedFile['sourceType']; xml: string }[] = [];
+    for (const f of validFiles) {
+      if (!selectedForDeploy.has(f.id)) continue;
+      const doc = docsRef.current.get(f.id);
+      if (!doc) continue;
+      result.push({ name: f.name, sourceType: f.sourceType, xml: serializeDocument(doc) });
+    }
+    return result;
+  }
+
+  async function handleValidateSelected() {
+    if (!selectedOrgUsername) return;
+    const filesToSend = gatherSelectedDeployFiles();
+    if (filesToSend.length === 0) return;
+    setDeployAction('validate');
+    setDeployError(undefined);
+    setDeployResult(null);
+    try {
+      const result = await validateFilesApi({ requestId: crypto.randomUUID(), targetOrg: selectedOrgUsername, files: filesToSend });
+      if (result.kind === 'success') setDeployResult(result.response);
+      else setDeployError('Could not reach the local SF CLI backend.');
+    } finally {
+      setDeployAction(null);
+    }
+  }
+
+  async function handleDeploySelected() {
+    if (!selectedOrgUsername) return;
+    const org = orgs.find((o) => o.username === selectedOrgUsername);
+    if (org?.likelyProduction) {
+      const confirmed = window.confirm('You are about to deploy to what looks like a PRODUCTION org. This makes real changes. Continue?');
+      if (!confirmed) return;
+    }
+    const filesToSend = gatherSelectedDeployFiles();
+    if (filesToSend.length === 0) return;
+    setDeployAction('deploy');
+    setDeployError(undefined);
+    setDeployResult(null);
+    try {
+      const result = await deployFilesApi({
+        requestId: crypto.randomUUID(),
+        targetOrg: selectedOrgUsername,
+        confirmedProduction: !!org?.likelyProduction,
+        files: filesToSend,
+      });
+      if (result.kind === 'success') setDeployResult(result.response);
+      else if (result.kind === 'productionConfirmationRequired') setDeployError('The server also flagged this as a production org — please retry.');
+      else setDeployError('Could not reach the local SF CLI backend.');
+    } finally {
+      setDeployAction(null);
+    }
+  }
 
   function pushHistory(label: string, steps: HistoryStep[]) {
     setHistory((prev) => [...prev, { id: `h${nextHistoryId++}`, label, steps }]);
@@ -371,7 +520,36 @@ export default function App() {
         canSaveDirectly={(id) => handlesRef.current.has(id)}
         onSave={handleSaveFile}
         onDiscard={handleDiscardFile}
+        selectableForDeploy={sfCliAvailable === true}
+        selectedForDeploy={selectedForDeploy}
+        onToggleSelectForDeploy={handleToggleSelectForDeploy}
       />
+
+      {sfCliAvailable === true && (
+        <>
+          <SfOrgPanel
+            orgs={orgs}
+            orgsLoading={orgsLoading}
+            selectedOrgUsername={selectedOrgUsername}
+            onSelectOrg={setSelectedOrgUsername}
+            loginInFlight={loginInFlight}
+            loginError={loginError}
+            onAddOrg={handleAddOrg}
+            onCancelLogin={handleCancelLogin}
+            onRemoveOrg={handleRemoveOrg}
+            removingUsername={removingOrgUsername}
+          />
+          <DeployToolbar
+            selectedCount={selectedForDeploy.size}
+            selectedOrgUsername={selectedOrgUsername}
+            deployAction={deployAction}
+            onValidate={handleValidateSelected}
+            onDeploy={handleDeploySelected}
+          />
+          {deployError && <p className="file-error">{deployError}</p>}
+          {deployResult && <DeployResultPanel result={deployResult} onDismiss={() => setDeployResult(null)} />}
+        </>
+      )}
 
       {validFiles.length < 2 && (
         <p className="hint">Load at least 2 files to see a comparison.</p>

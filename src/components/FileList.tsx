@@ -9,9 +9,24 @@ interface Props {
   canSaveDirectly: (id: string) => boolean;
   onSave: (id: string) => void;
   onDiscard: (id: string) => void;
+  selectableForDeploy: boolean;
+  selectedForDeploy: Set<string>;
+  onToggleSelectForDeploy: (id: string) => void;
 }
 
-export default function FileList({ files, onRemove, dirtyIds, savingIds, fileErrors, canSaveDirectly, onSave, onDiscard }: Props) {
+export default function FileList({
+  files,
+  onRemove,
+  dirtyIds,
+  savingIds,
+  fileErrors,
+  canSaveDirectly,
+  onSave,
+  onDiscard,
+  selectableForDeploy,
+  selectedForDeploy,
+  onToggleSelectForDeploy,
+}: Props) {
   if (files.length === 0) return null;
 
   return (
@@ -22,6 +37,16 @@ export default function FileList({ files, onRemove, dirtyIds, savingIds, fileErr
         const error = fileErrors[f.id];
         return (
           <li key={f.id} className={f.error ? 'file-item file-item-error' : 'file-item'}>
+            {selectableForDeploy && (
+              <input
+                type="checkbox"
+                checked={selectedForDeploy.has(f.id)}
+                disabled={!!f.error}
+                onChange={() => onToggleSelectForDeploy(f.id)}
+                title={dirty ? 'Select for Validate/Deploy (includes unsaved edits)' : 'Select for Validate/Deploy'}
+                aria-label={`Select ${f.name} for Validate/Deploy`}
+              />
+            )}
             <span className={`badge badge-${f.sourceType}`}>{f.sourceType === 'profile' ? 'Profile' : 'PermSet'}</span>
             <span className="file-name">{f.name}</span>
             {f.error && <span className="file-error">{f.error}</span>}

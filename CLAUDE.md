@@ -14,20 +14,23 @@ copy or move it, manually fill in a value that's missing for a file, delete a va
 back to disk (or download it, depending on browser support) or save every changed file at once, and
 undo any edit — one at a time or several at once — via a Word-style undo history. See **Editing**
 below. There's also a manual dark mode toggle (see **Dark mode toggle**) independent of the editing
-feature.
+feature, and an optional, dev-server-only integration that detects the Salesforce CLI and lets you
+validate or deploy loaded files against a connected org (see **SF CLI integration**) — the one
+deliberate exception to this tool's "no backend, no org connection" design.
 
 ## Commands
 
 ```bash
 npm install
-npm run dev      # Vite dev server
-npm run build    # tsc -b && vite build -> static dist/
-npm run preview  # preview the built dist/ locally
+npm run dev      # Vite dev server (also serves the SF CLI integration's API routes — see below)
+npm run build    # tsc -b && tsc -p tsconfig.server.json && vite build -> static dist/
+npm run preview  # preview the built dist/ locally (no SF CLI integration — no server at all)
 ```
 
-There is no test suite and no lint script. `tsc -b` (part of `build`) is the only automated check —
-`tsconfig.json` has `noUnusedLocals`/`noUnusedParameters` on, so unused code fails the build, not
-just a lint pass.
+There is no test suite and no lint script. `tsc -b` (frontend, `tsconfig.json`) and
+`tsc -p tsconfig.server.json` (the `server/` directory — see **SF CLI integration**) are the only
+automated checks, both run as part of `build`. `tsconfig.json` has `noUnusedLocals`/
+`noUnusedParameters` on, so unused code fails the build, not just a lint pass.
 
 ### Verifying changes without a browser
 
@@ -265,6 +268,100 @@ made and fixed here, worth not repeating:
   dark`) so remaining native chrome — checkboxes, mainly — follows the manual toggle instead of the
   OS preference. If you add a new form control, don't assume it inherited `--text` — check it.
 
+## SF CLI integration (validate/deploy against a real org)
+
+The one deliberate exception to "no backend, no org connection" (see Non-goals). Detects the
+Salesforce CLI (`sf`) on launch; if found, lets the user manage org connections and validate/deploy
+loaded files against one. **Dev-server-only** — this literally cannot work without a Node process
+capable of shelling out, and browser JS can't detect an installed CLI or spawn a process at all, so
+it's implemented as custom API middleware on the Vite dev server, not a separate service.
+
+**Why a temp scaffold, not the real project on disk**: browsers never expose the absolute filesystem
+path of a loaded file (only its name, by deliberate design) — so the backend has no way to `cd` into
+wherever the file actually lives. Instead, every Validate/Deploy sends the *currently in-memory*
+content of each selected file (via the existing `serializeDocument`, dirty or not — there's no save
+gate, since the backend never touches the real file either way) to the backend, which builds a
+disposable SFDX project from scratch (`server/tempScaffold.ts`: `sfdx-project.json` +
+`force-app/main/default/{profiles,permissionsets}/<Name>.<ext>`, using the same `SUFFIXES` table
+`src/lib/formatFileLabel.ts` already exports) and runs `sf` against *that*, then deletes it.
+
+### Module layout
+
+```
+server/               — Node-only, never bundled into the browser (tsconfig.json excludes it, same
+  sfCli/                as vite.config.ts itself; typechecked separately via tsconfig.server.json)
+    execSf.ts          — low-level child_process wrapper, typed errors, --json parsing
+    detect.ts          — detectSfCli()
+    orgs.ts            — listOrgs()/loginOrg()/cancelLogin()/logoutOrg()
+    deploy.ts          — validateFiles()/deployFiles(), parseDeployResult()
+  tempScaffold.ts      — buildTempScaffold()/cleanup()
+  apiTypes.ts          — pure `interface`s only, imported by the frontend via `import type` (erased
+                          at build — the browser bundle never actually traverses into server/)
+  vitePlugin.ts        — registers /api/sf/* routes via configureServer()
+```
+
+`src/lib/sfApi.ts` is the frontend's fetch client. Its one load-bearing design point: every function
+treats network error / non-2xx / non-JSON-content-type as the *same* "unavailable" outcome — a
+plain static host (or `npm run preview`) SPA-falls-back an unmatched GET to `index.html`, and
+`.json()` on that throws. Collapsing all three into one path means "CLI not installed" and "no
+backend present at all" are indistinguishable to the UI, which is exactly what we want (verified: no
+SF UI renders at all against a `vite preview` build of the static `dist/`).
+
+### Gotchas hit while building this — all confirmed empirically against a real `sf` install, not assumed
+
+- **Windows needs `{ shell: true }`.** `sf` only resolves via the `sf.cmd` shim on Windows (no
+  `sf.exe`); `child_process`'s `execFile`/`spawn` don't do PATHEXT resolution themselves the way
+  `cmd.exe` does. Without `shell: process.platform === 'win32'`, every invocation silently ENOENTs,
+  which — left unhandled — would report "CLI not installed" on every Windows machine with no visible
+  error. `execSf.ts` sets this on every call.
+- **stderr carries the "update available" banner, not stdout.** Confirmed on real `sf --version`/
+  `sf org list --json` output. Only ever `JSON.parse(stdout)`.
+- **`sf org list --json`'s result buckets overlap.** `other`/`sandboxes`/`nonScratchOrgs`/`devHubs`/
+  `scratchOrgs` are not disjoint — confirmed directly (a Dev Hub org appeared in both
+  `nonScratchOrgs` and `devHubs`; non-scratch orgs generally appear in both `other` and
+  `nonScratchOrgs`). `listOrgs()` flattens all five and dedupes by `orgId` — skip this and the org
+  picker shows duplicates.
+- **There's no explicit "is this Production" field.** Heuristic (`OrgSummary.likelyProduction`):
+  `!isSandbox && !isScratch`. Known, deliberate false positive: Developer Edition/Trailhead orgs
+  also match this (confirmed on real Dev Edition orgs) — intentionally the conservative direction
+  (over-warn, not under-warn); the UI badge's tooltip says so explicitly so it doesn't read as a bug.
+- **`--test-level NoTestRun` is invalid for `deploy validate`.** Confirmed by actually running it —
+  `deploy validate`'s `--test-level` only accepts `RunAllTestsInOrg`/`RunLocalTests`/
+  `RunSpecifiedTests`/`RunRelevantTests`; `NoTestRun` is `deploy start`-only syntax. Worse, even
+  where the CLI syntax *does* accept it (`deploy start`), Salesforce's platform itself rejects
+  `NoTestRun` for a genuine Production deploy — exactly the case the production-guardrail exists
+  for. `deploy.ts` deliberately passes no `--test-level` at all for either command, letting the
+  CLI's own default (`RunLocalTests`) apply uniformly — the tradeoff is that validate/deploy can
+  take a while on an org with a large existing Apex test suite, since our scaffold being Apex-free
+  doesn't exempt it from the org's overall test-level requirement.
+- **`sf` has real cold-start latency.** A single `sf org list --json` call took ~5s in the harness
+  used to verify this (oclif plugin-architecture bootstrap, not this tool's code) — the "Loading
+  orgs…" state in `SfOrgPanel` isn't a bug, it's real CLI overhead paid on every request.
+- **The temp directory can transiently fail to delete on Windows (`EBUSY`).** Observed directly:
+  `sf` can briefly hold a file handle open inside the scaffold for a moment after its own process
+  exits, so an immediate `fs.rm` can fail. `tempScaffold.ts`'s `cleanup()` uses `fs.rm`'s own
+  `maxRetries`/`retryDelay` options — Node's documented remedy for exactly this class of transient
+  Windows lock, not a defensive "just in case" retry.
+- **Metadata API sometimes serializes booleans as the strings `"true"`/`"false"`.**
+  `parseDeployResult()` coerces (`v === true || v === 'true'`) rather than assuming a real boolean.
+
+### Safety
+
+Deploy (never Validate, which is always a non-destructive dry run) requires confirmation when the
+target org is `likelyProduction`: the frontend's `window.confirm` (this codebase's existing
+convention for confirmations — no modal component exists here, don't add one) gates the initial
+click, and `/api/sf/deploy` independently re-derives `likelyProduction` server-side and rejects with
+`409` if `confirmedProduction` wasn't sent — defense against a stale org list across tabs, not a
+security boundary. Selecting an "active" org in this tool is session-local React state only; it
+never calls `sf config set target-org` and never mutates the user's actual CLI default — every
+invocation passes `--target-org` explicitly instead.
+
+Deliberately **not implemented**: cancelling an in-flight Validate/Deploy (unlike org login, which
+*is* cancellable — `POST /api/sf/login/cancel` — since OAuth is an open-ended, human-driven wait;
+validate/deploy are bounded, machine-driven calls with their own `--wait 10` timeout, so mid-flight
+cancellation was judged not worth the refactor of the `execFile`-based `runSf`/`runSfJson` layer to
+a cancellable `spawn`-based one).
+
 ## Live reload from disk
 
 `App.tsx` keeps a `Map<fileId, FileSystemFileHandle>` (in a ref, not state) for any file loaded via
@@ -283,6 +380,9 @@ drag-and-drop (`DataTransferItem.getAsFileSystemHandle`) and the click-to-browse
 
 ## Non-goals
 
-- No org connection, no `sf` CLI calls, no upload/backend of any kind — this is explicitly a local,
-  offline tool.
-- No SFDX/CI integration.
+- The core diff/edit pipeline itself has no org connection, no upload/backend of any kind — this is
+  explicitly a local, offline tool. The one deliberate exception is the SF CLI integration (see
+  above), which is dev-server-only and entirely optional — the rest of the tool works identically
+  with or without it.
+- No SFDX/CI integration beyond that one exception — this still isn't deployed metadata and isn't
+  part of any build/release pipeline.

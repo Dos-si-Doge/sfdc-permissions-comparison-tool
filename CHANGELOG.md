@@ -16,6 +16,15 @@ this tool doesn't currently follow a release/versioning process.
   Word's Undo History).
 - **Dark mode toggle** — a header button that explicitly switches between light and dark,
   overriding the OS-level preference. Choice persists across reloads (`localStorage`).
+- **Salesforce CLI integration** (dev server only — `npm run dev`, not the static build): detects
+  an installed `sf` CLI on launch and, if found, shows a panel to list/add/remove Salesforce org
+  connections and select an active org, plus per-file selection with **Validate Selected** and
+  **Deploy Selected** actions. Both build a disposable, self-contained SFDX project from whichever
+  files are currently loaded (dirty or saved, either way) and run the real `sf project deploy
+  validate`/`start` against it — nothing is required on disk beyond what's already loaded in the
+  tool. Deploying to what looks like a Production org requires an explicit confirmation; Validate
+  never writes anything. This is the one deliberate, optional exception to the tool's "no backend,
+  no org connection" design — everything else works identically with or without it.
 
 ### Fixed
 

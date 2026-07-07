@@ -254,3 +254,30 @@ thead th.col-name { z-index: 3; }
 .profile-only-note { color: var(--text-muted); }
 .profile-only-file { margin-bottom: 20px; }
 .profile-only-group h4 { margin-bottom: 4px; }
+
+.sf-org-panel { border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; }
+.sf-org-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sf-org-panel-header h3 { margin: 0; font-size: 1em; }
+.sf-org-login-waiting { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 0.9em; }
+.sf-org-list { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 4px; }
+.sf-org-item { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; }
+.sf-org-item label { display: flex; align-items: center; gap: 6px; flex: 1; cursor: pointer; }
+.sf-org-name { font-weight: 500; }
+.sf-org-badge-prod { background: var(--danger); color: white; font-size: 0.7em; padding: 2px 6px; border-radius: 4px; font-weight: 600; cursor: help; }
+.sf-org-badge-warn { color: var(--danger); font-size: 0.8em; cursor: help; }
+
+.deploy-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.deploy-toolbar button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-alt); cursor: pointer; }
+.deploy-toolbar button:disabled { cursor: not-allowed; opacity: 0.6; }
+
+.deploy-result { border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin-bottom: 16px; }
+.deploy-result-success { border-color: var(--fp-full-text); }
+.deploy-result-failure { border-color: var(--danger); }
+.deploy-result-header { display: flex; align-items: center; justify-content: space-between; }
+.deploy-result-header button { border: none; background: none; cursor: pointer; font-size: 1em; }
+.deploy-result-message { color: var(--text-muted); white-space: pre-wrap; }
+.deploy-result-list { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.9em; }
+.deploy-result-row { display: flex; gap: 8px; align-items: baseline; }
+.deploy-result-row-ok { color: var(--fp-full-text); }
+.deploy-result-row-bad { color: var(--danger); }
+.deploy-result-problem { color: var(--text-muted); }
