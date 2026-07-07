@@ -126,9 +126,15 @@ diff.
 A `NormalizedRow` can carry an optional `group` (e.g. the object name for a field permission row —
 `Account.FirstName` becomes `displayLabel: "FirstName"`, `group: "Account"`). `diffEngine` sorts by
 `group` then `displayLabel` so same-group rows stay contiguous, and `DiffTable` turns contiguous
-runs into a bolded section-header row via its `displayItems` derivation. If you add grouping to
-another category, follow the same pattern (split the key, set `group`, keep `key` as the *full*
-unique identifier) — don't invent a second mechanism.
+runs into a section-header row via its `displayItems` derivation — styled larger/bold/uppercase with
+a top border (`.group-header` in `global.css`) so it reads clearly as a section break rather than
+just another bolded row. If you add grouping to another category, follow the same pattern (split the
+key, set `group`, keep `key` as the *full* unique identifier) — don't invent a second mechanism.
+
+`DiffTable`'s search box filters against both `row.displayLabel` *and* `row.group` (case-insensitive
+substring match on either) — so for a grouped category, searching the object name surfaces every row
+in that group, not just a field literally named that. Keep this in mind if you change the filter
+predicate: it's one `||` away from silently going back to label-only matching.
 
 ## Editing (drag-copy/move, manual fill-in, delete, save)
 

@@ -208,8 +208,15 @@ thead th { background: var(--bg-alt); position: sticky; top: 0; z-index: 2; }
 thead th.col-name { z-index: 3; }
 
 .row-label { font-weight: 500; }
-.group-row .group-header { font-weight: 700; background: var(--bg-alt); }
-.group-row .group-header-filler { background: var(--bg-alt); }
+.group-row .group-header {
+  font-weight: 700;
+  font-size: 1.15em;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  background: var(--bg-alt);
+  border-top: 2px solid var(--border);
+}
+.group-row .group-header-filler { background: var(--bg-alt); border-top: 2px solid var(--border); }
 
 .cell-line { line-height: 1.3; }
 .cell-line + .cell-line { border-top: 1px dotted rgba(128, 128, 128, 0.25); }

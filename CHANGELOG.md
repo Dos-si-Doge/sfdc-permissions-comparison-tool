@@ -6,7 +6,16 @@ this tool doesn't currently follow a release/versioning process.
 
 ## [Unreleased]
 
+### Changed
+
+- **Section header rows** (e.g. object names in Field Permissions) are now larger, bold, uppercase,
+  and set off with a top border, making it easier to spot where one group ends and the next begins.
+
 ### Added
+
+- **Search now matches the group/object name**, not just the field or permission's own label — e.g.
+  searching "Account" in Field Permissions now finds all `Account.*` rows, not just a field
+  literally named "Account".
 
 - **Save All** button — saves every file with unsaved edits in one action, instead of one file at
   a time.

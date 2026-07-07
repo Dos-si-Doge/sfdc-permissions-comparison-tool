@@ -26,7 +26,12 @@ export default function DiffTable({ files, rows, category, editedByFile, onCopyV
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
       if (onlyDifferences && row.status === 'identical') return false;
-      if (search && !row.displayLabel.toLowerCase().includes(search.toLowerCase())) return false;
+      if (search) {
+        const needle = search.toLowerCase();
+        const matchesLabel = row.displayLabel.toLowerCase().includes(needle);
+        const matchesGroup = row.group?.toLowerCase().includes(needle) ?? false;
+        if (!matchesLabel && !matchesGroup) return false;
+      }
       return true;
     });
   }, [rows, onlyDifferences, search]);
@@ -53,7 +58,7 @@ export default function DiffTable({ files, rows, category, editedByFile, onCopyV
         </label>
         <input
           type="text"
-          placeholder="Search…"
+          placeholder="Search name or object…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
