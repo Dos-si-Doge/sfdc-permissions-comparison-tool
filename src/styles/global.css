@@ -14,6 +14,7 @@
   --fp-readonly-text: #7a5d00;
   --fp-none: #fbdada;
   --fp-none-text: #8a1f1f;
+  --edited: #2563eb;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
@@ -31,6 +32,7 @@
     --fp-readonly-text: #ffd97a;
     --fp-none: #4a1f1f;
     --fp-none-text: #ff9d9d;
+    --edited: #5b9dff;
   }
   body { background: #16181c; color: #e6e6e6; }
 }
@@ -80,6 +82,10 @@ header { margin-bottom: 16px; }
 .diff-table-controls { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; flex-wrap: wrap; }
 .row-count { color: #6b7280; font-size: 0.9em; }
 
+.mode-toggle { display: inline-flex; gap: 4px; margin-left: auto; }
+.mode-toggle button { padding: 4px 10px; border: 1px solid var(--border); border-radius: 6px; background: none; cursor: pointer; font-size: 0.9em; }
+.mode-toggle button.active { background: var(--bg-alt); font-weight: 600; }
+
 .diff-table-wrapper.expanded {
   width: 100vw;
   max-width: 100vw;
@@ -113,6 +119,36 @@ thead th.col-name { z-index: 3; }
 .cell.cell-fp-full { background: var(--fp-full); color: var(--fp-full-text); }
 .cell.cell-fp-readonly { background: var(--fp-readonly); color: var(--fp-readonly-text); }
 .cell.cell-fp-none { background: var(--fp-none); color: var(--fp-none-text); }
+
+.cell[draggable] { cursor: grab; position: relative; }
+.cell-drop-target { outline: 2px dashed var(--edited); outline-offset: -2px; }
+.cell-missing { cursor: pointer; }
+
+/* Blue border for unsaved edits — an outline rather than a background so it layers over the
+   generic amber "different" tint and the fieldPermissions read/write colors without needing to
+   win any specificity fight against either. */
+.cell-edited { outline: 2px solid var(--edited); outline-offset: -2px; }
+
+.cell-actions { position: absolute; top: 1px; right: 2px; display: none; gap: 2px; }
+.cell:hover .cell-actions { display: flex; }
+.cell-delete-btn, .cell-revert-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 3px;
+  line-height: 1;
+  font-size: 0.9em;
+  padding: 0 3px;
+  cursor: pointer;
+}
+.cell-missing .cell-revert-btn { position: absolute; top: 1px; right: 2px; }
+
+.inline-field-editor { display: flex; flex-direction: column; gap: 4px; white-space: normal; text-align: left; }
+.inline-field-editor-row { display: flex; align-items: center; gap: 6px; }
+.inline-field-editor-row select, .inline-field-editor-row input[type='text'] { font-size: inherit; }
+.inline-field-editor-actions { display: flex; gap: 6px; margin-top: 4px; }
+
+.file-edit-actions { display: flex; align-items: center; gap: 8px; }
+.file-dirty-hint { color: var(--edited); font-size: 0.85em; }
 
 .profile-only-note { color: #6b7280; }
 .profile-only-file { margin-bottom: 20px; }
