@@ -10,8 +10,11 @@ client-side — no backend, no org connection, nothing uploaded anywhere. This r
 (root-level `package.json`, `src/`, `index.html`) — it is not nested inside a larger SFDX project.
 
 Beyond the read-only diff, users can drag a permission value from one file's column onto another to
-copy or move it, manually fill in a value that's missing for a file, delete a value, and save the
-result back to disk (or download it, depending on browser support) — see **Editing** below.
+copy or move it, manually fill in a value that's missing for a file, delete a value, save the result
+back to disk (or download it, depending on browser support) or save every changed file at once, and
+undo any edit — one at a time or several at once — via a Word-style undo history. See **Editing**
+below. There's also a manual dark mode toggle (see **Dark mode toggle**) independent of the editing
+feature.
 
 ## Commands
 
@@ -48,6 +51,25 @@ Playwright's `page.locator(...).dragTo(...)` (real native drag events) and
 throwaway deps, and kill the dev server. This is also how the two bugs documented in the Editing
 section above were actually caught — jsdom's `XMLSerializer` doesn't reproduce the Chromium prolog
 quirk, and the namespace bug only became visible once the resulting XML was inspected end-to-end.
+
+## Keeping this file and CHANGELOG.md current
+
+Whenever you make a change to this codebase — a new feature, a behavior change, a bug fix worth
+remembering, a new gotcha discovered the hard way — update **both** files as part of that same
+change, not as a separate followup:
+
+- **`CHANGELOG.md`**: add an entry under `## [Unreleased]` (create the section if the last release
+  already absorbed it) describing *what* changed, in user-facing terms. Keep past dated sections
+  as-is; don't rewrite history.
+- **`CLAUDE.md`** (this file): update the relevant architecture section, or add a new one, so the
+  next person (human or Claude) reading this file doesn't have to rediscover what you just learned.
+  Prefer editing an existing section over appending an unrelated one at the bottom — e.g. a new
+  editing capability belongs in **Editing**, a new CSS trick belongs in **CSS gotchas**. Only add a
+  bug/gotcha note if it's genuinely non-obvious (would surprise a competent reader), not for routine
+  changes.
+
+Skip both only for changes with no lasting architectural or behavioral relevance (typo fixes,
+formatting, dependency bumps with no API change).
 
 ## Architecture
 
@@ -152,6 +174,26 @@ auto-saved — nothing touches disk until the user clicks **Save Changes** (or d
    back to a Blob-based browser download. After a handle-based save, `App.tsx` **re-reads the file
    from disk** (reusing the same logic as "Reload from disk") rather than trusting the in-memory
    mutation, so the UI always reflects what's actually on disk.
+7. **Save All** (`App.tsx`'s `handleSaveAll`) — `for (const id of dirtyIds) await handleSaveFile(id)`,
+   sequential rather than `Promise.all`, since each save can trigger a state update (and, on the
+   handle path, a disk re-read) that should settle before the next file's save starts.
+8. **Undo history** (`src/lib/editing/history.ts`) — every edit-producing handler
+   (`handleCopyValue`/`handleManualEdit`/`handleDeleteValue`) captures a `HistoryStep` (per affected
+   file: the row's `before`/`after` state, `undefined` meaning "didn't exist"/"deleted") *before*
+   calling `applyFieldEdit`/`applyFieldDelete`, and pushes a `HistoryEntry` (one entry per user
+   action — a "move" is 2 steps in 1 entry, so undoing it restores both sides together) onto
+   `App.tsx`'s `history` state. `undoEntries()` replays the inverse of each step (`applyFieldEdit`
+   with the `before` snapshot, or `applyFieldDelete` if `before` is `undefined`) — this is the same
+   apply/delete primitives as everywhere else, just fed historical values instead of new ones.
+   **Undo** pops one entry; the **History** dropdown lists every entry (most recent first) and
+   clicking one rolls back that entry *and everything after it* in one action, matching Word's Undo
+   History dropdown. Per-row revert (↩), Discard, Reload, and Remove all bypass this tracked flow
+   (they reset a file's baseline directly), so each one calls `pruneHistoryForFile`/
+   `pruneHistoryForRow` afterward to drop now-stale entries — **without this, Undo could reintroduce
+   a value the user just explicitly discarded/reloaded away**. Save does *not* prune: the steps store
+   actual field values rather than a reference to `originalFilesRef`, so undo still works correctly
+   against the freshly-reloaded post-save `Document` (verified in the Chromium harness described
+   below — same round-trip guarantee the save path already relies on).
 
 ### Two real bugs hit while building this — don't reintroduce them
 
@@ -187,6 +229,41 @@ auto-saved — nothing touches disk until the user clicks **Save Changes** (or d
   so it layers over both the generic amber "different" tint and the fieldPermissions read/write
   background colors without having to win a specificity fight against either — the same problem the
   `.cell-fp-*` rule above solves, deliberately sidestepped here instead of re-solved.
+
+## Dark mode toggle
+
+`global.css` originally only had a `@media (prefers-color-scheme: dark)` block (system-driven, no
+manual override). The header's toggle button needs to *win* over system preference, so every themed
+custom property is duplicated into `:root[data-theme='dark']` / `:root[data-theme='light']`
+attribute-selector blocks (kept alongside, not instead of, the media query — the attribute always
+has higher precedence once `data-theme` is present, regardless of which theme the OS is in).
+`App.tsx` stamps `data-theme` on `<html>` in two places: inside `getInitialTheme()`'s lazy
+`useState` initializer (synchronously, *before* first paint — this is what avoids a flash of the
+wrong theme; a `useEffect` alone would run one paint too late) and again in a `useEffect` whenever
+the toggle changes `theme`, which also persists the choice to `localStorage`
+(`permission-diff-theme`) so it survives a reload. If you add a new themed color, add it to *all
+three* places (the media query, `:root[data-theme='dark']`, and `:root[data-theme='light']`) — CSS
+custom properties don't merge across these, only the winning block's full set applies.
+
+**Every color in both themes must meet WCAG AA contrast (4.5:1 for normal text)** — checked via the
+relative-luminance formula, not eyeballed (a throwaway Playwright script computing
+`getComputedStyle(...).color`/`.backgroundColor` and the contrast ratio directly in the page is the
+fastest way to verify this; see "Verifying changes without a browser" above). Two mistakes already
+made and fixed here, worth not repeating:
+
+- **A color that passes contrast in one theme can fail badly in the other.** `--text-muted` in
+  particular needs a genuinely different value per theme (a grey light enough to read on a white
+  surface is too light to read on the dark one, and vice versa) — there's no single grey that works
+  for both, so don't try to share one value across themes for a "muted text" role.
+- **`button`/`input`/`select`/`textarea` don't inherit the page's `color` by default.** Browsers
+  give them native control colors keyed to `color-scheme`, not to the page's own CSS — so a control
+  can keep rendering with light-theme (often black) text even after `data-theme` flips to dark,
+  unless something forces it to follow the page's theme. Fixed two ways, both needed: (1) a
+  `button, input, select, textarea { color: inherit; font: inherit; }` reset so controls pick up
+  `--text` like normal content, and (2) setting `color-scheme: dark` / `color-scheme: light` inside
+  `:root[data-theme='dark']` / `:root[data-theme='light']` (overriding the base `color-scheme: light
+  dark`) so remaining native chrome — checkboxes, mainly — follows the manual toggle instead of the
+  OS preference. If you add a new form control, don't assume it inherited `--text` — check it.
 
 ## Live reload from disk
 
