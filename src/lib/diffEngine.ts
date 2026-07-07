@@ -1,7 +1,7 @@
 import { CATEGORIES } from './types';
 import type { Category, DiffResult, DiffRow, NormalizedFile, RowStatus } from './types';
 
-function fieldsEqual(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+export function fieldsEqual(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
   for (const key of keys) {
     if (a[key] !== b[key]) return false;

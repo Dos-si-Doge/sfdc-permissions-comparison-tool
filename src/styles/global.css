@@ -3,25 +3,35 @@
   --border: #d0d5dd;
   --bg-alt: #f6f7f9;
   --surface: #ffffff;
+  --text: #1a1a1a;
+  --text-muted: #4b5563;
   --diff: #fde7c9;
   --diff-text: #7a4a00;
   --missing: #eceef1;
   --profile-color: #2563eb;
-  --permset-color: #16a34a;
+  --permset-color: #15803d;
   --fp-full: #d9f2e3;
   --fp-full-text: #0f5c33;
   --fp-readonly: #fdf3cf;
   --fp-readonly-text: #7a5d00;
   --fp-none: #fbdada;
   --fp-none-text: #8a1f1f;
+  --edited: #2563eb;
+  --danger: #dc2626;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
+/* --text/--text-muted/--danger values below are chosen for >=4.5:1 contrast against both --surface
+   and --missing/--bg-alt in their respective theme — verified against WCAG's relative-luminance
+   formula, not just eyeballed. --text-muted in particular needs a *different* value per theme (a
+   grey light enough to read on white is too light to read on the dark surface, and vice versa). */
 @media (prefers-color-scheme: dark) {
   :root {
     --border: #3a3f47;
     --bg-alt: #1e2126;
     --surface: #16181c;
+    --text: #e6e6e6;
+    --text-muted: #9ca3af;
     --diff: #5a3d10;
     --diff-text: #ffcf8a;
     --missing: #2a2d33;
@@ -31,17 +41,77 @@
     --fp-readonly-text: #ffd97a;
     --fp-none: #4a1f1f;
     --fp-none-text: #ff9d9d;
+    --edited: #5b9dff;
+    --danger: #f87171;
   }
-  body { background: #16181c; color: #e6e6e6; }
+  body { background: var(--surface); color: var(--text); }
 }
+
+/* Explicit theme choice (the dark-mode toggle) always wins over the OS-level media query above, and
+   also sets `color-scheme` per-theme (overriding the `light dark` default above) so native form
+   controls — checkboxes, and any button chrome the reset below doesn't reach — follow the toggle
+   rather than the OS preference. Without this, forcing dark mode while the OS is set to light left
+   native controls rendered with light-theme colors (e.g. black checkbox ticks) against the app's now
+   -dark backgrounds. `App.tsx` stamps `data-theme` on <html> synchronously on first render (from
+   localStorage, or the system preference as a default) and again whenever the toggle is clicked. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --border: #3a3f47;
+  --bg-alt: #1e2126;
+  --surface: #16181c;
+  --text: #e6e6e6;
+  --text-muted: #9ca3af;
+  --diff: #5a3d10;
+  --diff-text: #ffcf8a;
+  --missing: #2a2d33;
+  --fp-full: #163a24;
+  --fp-full-text: #8fe6b3;
+  --fp-readonly: #4a3a10;
+  --fp-readonly-text: #ffd97a;
+  --fp-none: #4a1f1f;
+  --fp-none-text: #ff9d9d;
+  --edited: #5b9dff;
+  --danger: #f87171;
+}
+:root[data-theme='dark'] body { background: var(--surface); color: var(--text); }
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --border: #d0d5dd;
+  --bg-alt: #f6f7f9;
+  --surface: #ffffff;
+  --text: #1a1a1a;
+  --text-muted: #4b5563;
+  --diff: #fde7c9;
+  --diff-text: #7a4a00;
+  --missing: #eceef1;
+  --fp-full: #d9f2e3;
+  --fp-full-text: #0f5c33;
+  --fp-readonly: #fdf3cf;
+  --fp-readonly-text: #7a5d00;
+  --fp-none: #fbdada;
+  --fp-none-text: #8a1f1f;
+  --edited: #2563eb;
+  --danger: #dc2626;
+}
+:root[data-theme='light'] body { background: var(--surface); color: var(--text); }
 
 * { box-sizing: border-box; }
 body { margin: 0; }
 
+/* Buttons/inputs/selects don't inherit the page's `color` by default — browsers give them UA
+   "system control" colors instead, keyed to `color-scheme`/OS theme rather than page CSS. Left
+   alone, that's exactly how a label ends up as unthemed (often black) text once dark mode is
+   toggled on: the surrounding background goes dark via our custom properties, but the control text
+   doesn't follow. This reset makes every control inherit --text like normal content. */
+button, input, select, textarea { color: inherit; font: inherit; }
+
 .app { max-width: 1200px; margin: 0 auto; padding: 24px; }
 
 header { margin-bottom: 16px; }
-.subtitle { color: #6b7280; margin-top: 4px; }
+.header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.theme-toggle { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-alt); cursor: pointer; white-space: nowrap; }
+.subtitle { color: var(--text-muted); margin-top: 4px; }
 
 .drop-zone {
   border: 2px dashed var(--border);
@@ -54,19 +124,52 @@ header { margin-bottom: 16px; }
 
 .file-list { list-style: none; padding: 0; margin: 0 0 16px; display: flex; flex-direction: column; gap: 6px; }
 .file-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; }
-.file-item-error { border-color: #dc2626; }
-.file-error { color: #dc2626; font-size: 0.85em; }
+.file-item-error { border-color: var(--danger); }
+.file-error { color: var(--danger); font-size: 0.85em; }
 .file-name { flex: 1; }
 .badge { font-size: 0.75em; padding: 2px 6px; border-radius: 4px; color: white; }
 .badge-profile { background: var(--profile-color); }
 .badge-permissionset { background: var(--permset-color); }
 
-.hint { color: #6b7280; }
+.hint { color: var(--text-muted); }
 
 .reload-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .reload-bar button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-alt); cursor: pointer; }
 .reload-bar button:disabled { cursor: not-allowed; opacity: 0.6; }
-.reload-hint { color: #6b7280; font-size: 0.85em; }
+.reload-hint { color: var(--text-muted); font-size: 0.85em; }
+
+.undo-controls { display: flex; align-items: center; gap: 6px; }
+.history-dropdown { position: relative; }
+.history-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 4px;
+  min-width: 280px;
+  max-height: 300px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+.history-list li { margin: 0; }
+.history-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 0.85em;
+  white-space: normal;
+}
+.history-list button:hover { background: var(--bg-alt); }
 
 .view-toggle { display: flex; gap: 8px; margin: 16px 0; }
 .view-toggle button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: none; cursor: pointer; }
@@ -78,7 +181,11 @@ header { margin-bottom: 16px; }
 .diff-count { background: var(--diff); color: var(--diff-text); border-radius: 10px; padding: 0 6px; font-size: 0.8em; }
 
 .diff-table-controls { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; flex-wrap: wrap; }
-.row-count { color: #6b7280; font-size: 0.9em; }
+.row-count { color: var(--text-muted); font-size: 0.9em; }
+
+.mode-toggle { display: inline-flex; gap: 4px; margin-left: auto; }
+.mode-toggle button { padding: 4px 10px; border: 1px solid var(--border); border-radius: 6px; background: none; cursor: pointer; font-size: 0.9em; }
+.mode-toggle button.active { background: var(--bg-alt); font-weight: 600; }
 
 .diff-table-wrapper.expanded {
   width: 100vw;
@@ -108,12 +215,42 @@ thead th.col-name { z-index: 3; }
 .cell-line + .cell-line { border-top: 1px dotted rgba(128, 128, 128, 0.25); }
 
 .row-different .cell { background: var(--diff); color: var(--diff-text); }
-.cell-missing { background: var(--missing); color: #9ca3af; text-align: center; }
+.cell-missing { background: var(--missing); color: var(--text-muted); text-align: center; }
 
 .cell.cell-fp-full { background: var(--fp-full); color: var(--fp-full-text); }
 .cell.cell-fp-readonly { background: var(--fp-readonly); color: var(--fp-readonly-text); }
 .cell.cell-fp-none { background: var(--fp-none); color: var(--fp-none-text); }
 
-.profile-only-note { color: #6b7280; }
+.cell[draggable] { cursor: grab; position: relative; }
+.cell-drop-target { outline: 2px dashed var(--edited); outline-offset: -2px; }
+.cell-missing { cursor: pointer; }
+
+/* Blue border for unsaved edits — an outline rather than a background so it layers over the
+   generic amber "different" tint and the fieldPermissions read/write colors without needing to
+   win any specificity fight against either. */
+.cell-edited { outline: 2px solid var(--edited); outline-offset: -2px; }
+
+.cell-actions { position: absolute; top: 1px; right: 2px; display: none; gap: 2px; }
+.cell:hover .cell-actions { display: flex; }
+.cell-delete-btn, .cell-revert-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 3px;
+  line-height: 1;
+  font-size: 0.9em;
+  padding: 0 3px;
+  cursor: pointer;
+}
+.cell-missing .cell-revert-btn { position: absolute; top: 1px; right: 2px; }
+
+.inline-field-editor { display: flex; flex-direction: column; gap: 4px; white-space: normal; text-align: left; }
+.inline-field-editor-row { display: flex; align-items: center; gap: 6px; }
+.inline-field-editor-row select, .inline-field-editor-row input[type='text'] { font-size: inherit; }
+.inline-field-editor-actions { display: flex; gap: 6px; margin-top: 4px; }
+
+.file-edit-actions { display: flex; align-items: center; gap: 8px; }
+.file-dirty-hint { color: var(--edited); font-size: 0.85em; }
+
+.profile-only-note { color: var(--text-muted); }
 .profile-only-file { margin-bottom: 20px; }
 .profile-only-group h4 { margin-bottom: 4px; }

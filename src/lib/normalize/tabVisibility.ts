@@ -1,15 +1,15 @@
 import { getDirectChildren, elementToObject } from '../parseXml';
 import type { NormalizedRow, SourceType } from '../types';
 
-type NormalizedVisibility = 'Visible' | 'Available' | 'Hidden';
+export type NormalizedVisibility = 'Visible' | 'Available' | 'Hidden';
 
-const PROFILE_MAP: Record<string, NormalizedVisibility> = {
+export const PROFILE_MAP: Record<string, NormalizedVisibility> = {
   DefaultOn: 'Visible',
   DefaultOff: 'Available',
   Hidden: 'Hidden',
 };
 
-const PERMSET_MAP: Record<string, NormalizedVisibility> = {
+export const PERMSET_MAP: Record<string, NormalizedVisibility> = {
   Visible: 'Visible',
   Available: 'Available',
   None: 'Hidden',
